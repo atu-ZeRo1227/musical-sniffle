@@ -1,0 +1,777 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>HOP LINK 3D</title>
+    <!-- 3D Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cannon.js/0.6.2/cannon.min.js"></script>
+
+    <style>
+        * { box-sizing: border-box; }
+        html, body {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            overflow: hidden; font-family: system-ui, sans-serif;
+            background: #10131a; color: white;
+            touch-action: none;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        
+        #app { width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; }
+        
+        .screen { width: 100%; max-width: 700px; text-align: center; padding: 12px; }
+        #title { font-size: clamp(48px, 10vw, 88px); font-weight: 900; letter-spacing: 4px; margin-bottom: 8px; }
+        .subtitle { color: #aeb7c8; margin-bottom: 32px; }
+        .card { background: #191f2b; border: 1px solid #30394b; border-radius: 22px; padding: 28px; box-shadow: 0 20px 60px #0005; }
+        label { display: block; text-align: left; color: #aeb7c8; font-size: 14px; margin-bottom: 8px; }
+        input { width: 100%; padding: 16px; border-radius: 13px; border: 1px solid #3a4558; background: #0f131b; color: white; font-size: 18px; outline: none; }
+        button.menu-btn { width: 100%; padding: 16px; margin-top: 16px; border: 0; border-radius: 13px; background: #ffd34d; color: #151922; font-size: 18px; font-weight: 900; cursor: pointer; }
+        button.menu-btn:active { transform: translateY(1px); }
+        .error { color: #ff7b91; min-height: 22px; margin-top: 10px; }
+
+        #gameScreen { display: none; width: 100%; height: 100%; position: relative; }
+        #gameCanvasContainer { width: 100%; height: 100%; position: absolute; top: 0; left: 0; z-index: 1; }
+        
+        #gameUI { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between; }
+        .top-bar { display: flex; justify-content: space-between; padding: 16px; }
+        .top-btn { pointer-events: auto; background: rgba(37, 44, 58, 0.8); color: white; border: 2px solid rgba(255,255,255,0.2); padding: 10px 20px; border-radius: 12px; font-weight: bold; font-size: 16px; cursor: pointer; backdrop-filter: blur(4px); }
+        .top-btn:active { background: rgba(255,255,255,0.3); }
+        
+        .bottom-controls { display: flex; justify-content: space-between; align-items: flex-end; padding: 20px; }
+        .left-controls { display: flex; gap: 12px; }
+        .action-btn { pointer-events: auto; width: 75px; height: 75px; border-radius: 50%; background: rgba(255, 255, 255, 0.15); border: 2px solid rgba(255, 255, 255, 0.3); color: white; font-size: 28px; font-weight: bold; display: flex; justify-content: center; align-items: center; }
+        .action-btn.jump { width: 85px; height: 85px; background: rgba(255, 211, 77, 0.2); border-color: rgba(255, 211, 77, 0.5); color: #ffd34d; font-size: 22px; }
+        .action-btn:active { background: rgba(255, 255, 255, 0.4); }
+        .action-btn.jump:active { background: rgba(255, 211, 77, 0.5); }
+
+        #hudText { position: absolute; top: 70px; left: 16px; color: white; font-weight: bold; text-shadow: 1px 1px 2px black; font-size: 18px; }
+        #clearScreen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 3; display: none; flex-direction: column; justify-content: center; align-items: center; color: white; }
+        #clearScreen h1 { font-size: 64px; color: #ffd34d; margin: 0; }
+        #clearScreen p { font-size: 24px; margin-top: 10px; }
+    </style>
+</head>
+<body>
+
+<div id="app">
+    <section id="nicknameScreen" class="screen">
+        <div id="title">HOP LINK 3D</div>
+        <div class="subtitle">転がって、跳ねて、3Dのゴールを目指せ。</div>
+        <div class="card">
+            <label for="nickname">ニックネームを入力</label>
+            <input id="nickname" maxlength="12" placeholder="ニックネームを入力">
+            <div id="error" class="error"></div>
+            <button id="decideBtn" class="menu-btn">決定</button>
+        </div>
+    </section>
+
+    <section id="mainMenuScreen" class="screen" style="display: none;">
+        <div id="title">HOP LINK 3D</div>
+        <div class="subtitle" id="greeting">こんにちは、〇〇！</div>
+        <div class="card">
+            <button id="playBtn" class="menu-btn">プレイ</button>
+            <button id="rankingBtn" class="menu-btn">ランキング</button>
+        </div>
+    </section>
+
+    <section id="rankingScreen" class="screen" style="display: none;">
+        <div id="title">RANKING</div>
+        <div class="card">
+            <table style="width: 100%; text-align: left; margin-bottom: 20px; border-collapse: collapse;">
+                <tr style="border-bottom: 1px solid #3a4558; padding-bottom: 8px;"><th>順位</th><th>名前</th><th>タイム</th></tr>
+                <tr><td style="padding: 8px 0;">1</td><td>Player1</td><td>00:45:12</td></tr>
+            </table>
+            <button id="backBtn" class="menu-btn">戻る</button>
+        </div>
+    </section>
+
+    <section id="gameScreen">
+        <div id="gameCanvasContainer"></div>
+        <div id="gameUI">
+            <div class="top-bar">
+                <button id="titleGameBtn" class="top-btn">タイトル</button>
+                <button id="retryGameBtn" class="top-btn">リトライ(R)</button>
+            </div>
+            <div id="hudText"></div>
+            <div class="bottom-controls">
+                <div class="left-controls">
+                    <button class="action-btn" data-k="ArrowLeft">←</button>
+                    <button class="action-btn" data-k="ArrowRight">→</button>
+                </div>
+                <div class="right-controls">
+                    <button class="action-btn jump" data-k="ArrowUp">JUMP</button>
+                </div>
+            </div>
+        </div>
+        <div id="clearScreen">
+            <h1>CLEAR!</h1>
+            <p id="clearText"></p>
+            <button id="clearRetryBtn" class="menu-btn" style="width: 200px; margin-top: 30px;">もう一度遊ぶ</button>
+            <button id="clearTitleBtn" class="menu-btn" style="width: 200px; background: #3a4558; color: white;">タイトルへ</button>
+        </div>
+    </section>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.4.0/firebase-app.js";
+import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.4.0/firebase-analytics.js";
+import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit } from "https://www.gstatic.com/firebasejs/10.4.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAR_Jab9jsIhfbVk1iOICAHpxBU_GdP2aY",
+  authDomain: "jamp-d0933.firebaseapp.com",
+  projectId: "jamp-d0933",
+  storageBucket: "jamp-d0933.firebasestorage.app",
+  messagingSenderId: "267439681365",
+  appId: "1:267439681365:web:a8b711a962c70ef08949dc",
+  measurementId: "G-J9KX2TR8B1"
+};
+
+const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app);
+const db = getFirestore(app);
+
+async function saveRecord(name, timeMs) {
+    try {
+        await addDoc(collection(db, "rankings"), {
+            name: name,
+            timeMs: timeMs,
+            formattedTime: formatTime(timeMs),
+            date: new Date()
+        });
+    } catch (e) {
+        console.error("Error adding document: ", e);
+    }
+}
+
+async function loadRanking() {
+    const tbody = document.querySelector("#rankingScreen table");
+    tbody.innerHTML = '<tr style="border-bottom: 1px solid #3a4558; padding-bottom: 8px;"><th>順位</th><th>名前</th><th>タイム</th></tr><tr><td colspan="3" style="text-align:center; padding:20px;">読み込み中...</td></tr>';
+    
+    try {
+        const q = query(collection(db, "rankings"), orderBy("timeMs", "asc"), limit(10));
+        const querySnapshot = await getDocs(q);
+        
+        let html = '<tr style="border-bottom: 1px solid #3a4558; padding-bottom: 8px;"><th>順位</th><th>名前</th><th>タイム</th></tr>';
+        let rank = 1;
+        querySnapshot.forEach((doc) => {
+            const data = doc.data();
+            html += `<tr><td style="padding: 8px 0;">${rank}</td><td>${data.name}</td><td>${data.formattedTime}</td></tr>`;
+            rank++;
+        });
+        if(rank === 1) html += '<tr><td colspan="3" style="text-align:center; padding:20px;">まだ記録がありません</td></tr>';
+        tbody.innerHTML = html;
+    } catch (e) {
+        console.error("Error loading documents: ", e);
+        tbody.innerHTML = '<tr style="border-bottom: 1px solid #3a4558; padding-bottom: 8px;"><th>順位</th><th>名前</th><th>タイム</th></tr><tr><td colspan="3" style="text-align:center; padding:20px; color:#ff7b91;">エラーが発生しました</td></tr>';
+    }
+}
+
+const nicknameScreen = document.getElementById("nicknameScreen");
+const mainMenuScreen = document.getElementById("mainMenuScreen");
+const rankingScreen = document.getElementById("rankingScreen");
+const gameScreen = document.getElementById("gameScreen");
+const nickname = document.getElementById("nickname");
+const error = document.getElementById("error");
+const greeting = document.getElementById("greeting");
+const hudText = document.getElementById("hudText");
+let currentName = "";
+
+document.getElementById("decideBtn").onclick = goToMainMenu;
+nickname.addEventListener("keydown", e => { if (e.key === "Enter") goToMainMenu(); });
+
+function goToMainMenu() {
+    const name = nickname.value.trim();
+    if (!name) { error.textContent = "ニックネームを入力してください"; return; }
+    error.textContent = "";
+    currentName = name;
+    greeting.textContent = "こんにちは、" + name + "！";
+    hideAll();
+    mainMenuScreen.style.display = "block";
+}
+
+document.getElementById("playBtn").onclick = () => { hideAll(); gameScreen.style.display = "block"; startGame(); };
+document.getElementById("rankingBtn").onclick = async () => { hideAll(); rankingScreen.style.display = "block"; await loadRanking(); };
+document.getElementById("backBtn").onclick = () => { hideAll(); mainMenuScreen.style.display = "block"; };
+document.getElementById("titleGameBtn").onclick = () => { stopGame(); hideAll(); mainMenuScreen.style.display = "block"; };
+document.getElementById("retryGameBtn").onclick = () => { resetStage(); };
+document.getElementById("clearRetryBtn").onclick = () => { document.getElementById("clearScreen").style.display = "none"; resetStage(); };
+document.getElementById("clearTitleBtn").onclick = () => { document.getElementById("clearScreen").style.display = "none"; stopGame(); hideAll(); mainMenuScreen.style.display = "block"; };
+
+function hideAll() {
+    nicknameScreen.style.display = "none";
+    mainMenuScreen.style.display = "none";
+    rankingScreen.style.display = "none";
+    gameScreen.style.display = "none";
+}
+
+const keys = new Set();
+const touch = new Set();
+document.addEventListener("keydown", e => { 
+    keys.add(e.key); 
+    if(e.key.toLowerCase() === 'r' && gameScreen.style.display === 'block') resetStage();
+});
+document.addEventListener("keyup", e => keys.delete(e.key));
+
+document.querySelectorAll(".action-btn").forEach(btn => {
+    const k = btn.dataset.k;
+    btn.addEventListener('touchstart', e => { e.preventDefault(); touch.add(k); }, { passive: false });
+    btn.addEventListener('touchend', e => { e.preventDefault(); touch.delete(k); }, { passive: false });
+    btn.addEventListener('touchcancel', e => { e.preventDefault(); touch.delete(k); }, { passive: false });
+    btn.onmousedown = e => { e.preventDefault(); touch.add(k); };
+    btn.onmouseup = btn.onmouseleave = () => touch.delete(k);
+});
+function isDown(k) { return keys.has(k) || touch.has(k); }
+
+let scene, camera, renderer, world;
+let playerBody, playerMesh;
+let meshes = [], bodies = [];
+let animationId;
+let fallCount = 0;
+let isPlaying = false;
+let isCleared = false;
+let goalBody;
+let startTime = 0;
+
+let physicsMaterial, bouncyMaterial, iceMaterial;
+let updatables = [];
+
+function init3D() {
+    if(scene) return;
+
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color('#87CEEB'); 
+    scene.fog = new THREE.FogExp2(0x87CEEB, 0.005); 
+
+    camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+    
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.shadowMap.enabled = true;
+    document.getElementById("gameCanvasContainer").appendChild(renderer.domElement);
+
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+    scene.add(ambientLight);
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    dirLight.position.set(10, 20, 10);
+    dirLight.castShadow = true;
+    dirLight.shadow.mapSize.width = 1024;
+    dirLight.shadow.mapSize.height = 1024;
+    scene.add(dirLight);
+
+    world = new CANNON.World();
+    world.gravity.set(0, -25, 0); 
+    world.broadphase = new CANNON.NaiveBroadphase();
+    world.solver.iterations = 10;
+
+    physicsMaterial = new CANNON.Material("standard");
+    bouncyMaterial = new CANNON.Material("bouncy");
+    iceMaterial = new CANNON.Material("ice");
+
+    world.addContactMaterial(new CANNON.ContactMaterial(physicsMaterial, bouncyMaterial, { friction: 0.5, restitution: 1.8 }));
+    world.addContactMaterial(new CANNON.ContactMaterial(physicsMaterial, iceMaterial, { friction: 0.00, restitution: 0.1 }));
+    world.addContactMaterial(new CANNON.ContactMaterial(physicsMaterial, physicsMaterial, { friction: 0.8, restitution: 0.1 }));
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+}
+
+function createBox(x, y, z, w, h, d, color, options = {}) {
+    const shape = new CANNON.Box(new CANNON.Vec3(w/2, h/2, d/2));
+    const mat = options.material || physicsMaterial;
+    const mass = options.mass !== undefined ? options.mass : 0;
+    const type = options.type !== undefined ? options.type : CANNON.Body.STATIC;
+    
+    const body = new CANNON.Body({ mass: mass, material: mat, type: type });
+    body.addShape(shape);
+    body.position.set(x, y, z);
+    if(options.isSpike) body.isSpike = true;
+    
+    world.addBody(body);
+    
+    let mesh;
+    if(options.customMesh) {
+        mesh = options.customMesh;
+        mesh.position.set(x, y, z);
+    } else {
+        const geo = new THREE.BoxGeometry(w, h, d);
+        let m;
+        // 土地（#6bd16b）の場合は「上を芝生、横を土」にする
+        if (color === '#6bd16b') {
+            const grassMat = new THREE.MeshLambertMaterial({ color: '#55cc55' }); // 鮮やかな芝生
+            const dirtMat = new THREE.MeshLambertMaterial({ color: '#8b5a2b' });  // 土
+            // 右、左、上、下、前、後
+            m = [dirtMat, dirtMat, grassMat, dirtMat, dirtMat, dirtMat];
+        } else {
+            m = new THREE.MeshLambertMaterial({ color: color });
+        }
+        mesh = new THREE.Mesh(geo, m);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+    }
+    scene.add(mesh);
+
+    bodies.push(body);
+    meshes.push(mesh);
+    return { body, mesh };
+}
+
+function createSpike(x, y, z, count) {
+    const group = new THREE.Group();
+    const body = new CANNON.Body({ mass: 0, type: CANNON.Body.STATIC });
+    body.isSpike = true;
+    
+    // コーンの向きを上に向けるための回転（Cannon.jsのCylinderはZ軸方向を向いているため）
+    const q = new CANNON.Quaternion();
+    q.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
+
+    for(let i=0; i<count; i++) {
+        // 見た目の作成
+        const geo = new THREE.ConeGeometry(0.5, 1, 8);
+        const mat = new THREE.MeshLambertMaterial({ color: '#ff3333' });
+        const cone = new THREE.Mesh(geo, mat);
+        
+        const localX = (i - count/2 + 0.5) * 1;
+        cone.position.set(localX, 0, 0);
+        cone.castShadow = true;
+        group.add(cone);
+        
+        // 物理形状の作成（先端が極細の円柱＝コーンに近い形状）
+        const shape = new CANNON.Cylinder(0.01, 0.5, 1, 8);
+        body.addShape(shape, new CANNON.Vec3(localX, 0, 0), q);
+    }
+    
+    body.position.set(x, y, z);
+    world.addBody(body);
+    
+    group.position.set(x, y, z);
+    scene.add(group);
+    
+    bodies.push(body);
+    meshes.push(group);
+}
+
+function createMovingPlatform(startX, endX, y) {
+    // 幅6の土地をキネマティックボディとして作成
+    const { body, mesh } = createBox(startX, y, 0, 6, 4, 4, '#6bd16b', { type: CANNON.Body.KINEMATIC });
+    const speed = 4; // 移動速度
+    body.velocity.x = speed;
+    
+    // リフトに雷注意の看板を追加 (プレイヤーの奥 Z=-1.5 に配置して当たらないようにする)
+    const signGroup = new THREE.Group();
+    
+    // 柱 (高さ2)
+    const poleGeo = new THREE.CylinderGeometry(0.1, 0.1, 2, 8);
+    const poleMat = new THREE.MeshLambertMaterial({ color: '#664422' }); // 木の柱
+    const pole = new THREE.Mesh(poleGeo, poleMat);
+    pole.position.set(0, 3, -1.5); // リフト上端(Y=2)から上に伸ばす
+    signGroup.add(pole);
+    
+    // 黄色い看板の板
+    const boardGeo = new THREE.BoxGeometry(2, 1.2, 0.2);
+    const boardMat = new THREE.MeshLambertMaterial({ color: '#ffcc00' });
+    const board = new THREE.Mesh(boardGeo, boardMat);
+    board.position.set(0, 3.6, -1.4); 
+    signGroup.add(board);
+    
+    // 雷のマーク（赤いギザギザの代わりの下向き三角）
+    const boltGeo = new THREE.ConeGeometry(0.4, 0.8, 3);
+    const boltMat = new THREE.MeshBasicMaterial({ color: '#ff0000' });
+    const bolt = new THREE.Mesh(boltGeo, boltMat);
+    bolt.rotation.z = Math.PI; 
+    bolt.position.set(0, 3.6, -1.29); // 板より少し手前
+    signGroup.add(bolt);
+    
+    mesh.add(signGroup);
+    
+    updatables.push((time, dt) => {
+        // 指定した範囲(startX ~ endX)を行ったり来たりする
+        if (body.position.x >= endX && body.velocity.x > 0) {
+            body.velocity.x = -speed;
+        } else if (body.position.x <= startX && body.velocity.x < 0) {
+            body.velocity.x = speed;
+        }
+    });
+}
+
+function createThwomp(x, y, z) {
+    const startY = y;
+    const endY = y - 7;
+    const { body } = createBox(x, y, z, 4, 4, 4, '#777777', { type: CANNON.Body.KINEMATIC });
+    body.isThwomp = true;
+    
+    const state = { freezeTimer: 0 };
+    
+    updatables.push((time, dt) => {
+        if (state.freezeTimer > 0) {
+            state.freezeTimer -= dt;
+            body.velocity.y = 0;
+            // 止まっている間は一番上に固定しておく
+            body.position.y = startY;
+            return;
+        }
+        
+        const cycle = (time % 4000) / 4000; 
+        if (cycle < 0.1) {
+            body.velocity.y = -40; 
+        } else if (cycle < 0.5) {
+            body.velocity.y = 0;
+            body.position.y = endY; 
+        } else {
+            body.velocity.y = 4; 
+            if (body.position.y > startY) body.position.y = startY;
+        }
+    });
+    
+    return state;
+}
+
+function createButton(x, y, z, onPushed) {
+    // スイッチとなる赤いボタンを作成
+    const { body, mesh } = createBox(x, y, z, 2, 0.5, 2, '#ff3333', { type: CANNON.Body.STATIC });
+    const originalY = y;
+    let timer = 0;
+    
+    updatables.push((time, dt) => {
+        if (timer > 0) {
+            timer -= dt;
+            if (timer <= 0) {
+                // タイマー終了でボタンが元に戻り、再度押せるようになる
+                body.position.y = originalY;
+                mesh.position.y = body.position.y;
+            }
+            return; // 押し込まれている間は再度押せない
+        }
+        
+        // プレイヤーがボタンの真上に乗ったか判定
+        const dx = Math.abs(playerBody.position.x - body.position.x);
+        const dy = playerBody.position.y - body.position.y;
+        
+        if (dx < 1.5 && dy > 0 && dy < 1.5) {
+            timer = 10.0; // 10秒間押し込まれた状態にする
+            
+            // ボタンが押し込まれた見た目にする
+            body.position.y = originalY - 0.2;
+            mesh.position.y = body.position.y;
+            onPushed();
+        }
+    });
+}
+
+function createRotatingStick(x, y, z) {
+    const { body } = createBox(x, y, z, 2, 12, 2, '#ffaa00', { type: CANNON.Body.KINEMATIC });
+    updatables.push((time, dt) => {
+        body.angularVelocity.set(0, 0, -2.5); 
+    });
+}
+
+function createLightningArea(startX, endX) {
+    const cloudGeo = new THREE.BoxGeometry(endX - startX + 10, 2, 6);
+    const cloudMat = new THREE.MeshLambertMaterial({ color: '#555566' });
+    const cloud = new THREE.Mesh(cloudGeo, cloudMat);
+    cloud.position.set((startX + endX)/2, 18, 0);
+    scene.add(cloud);
+    
+    const strikeGeo = new THREE.CylinderGeometry(0.5, 0.5, 20, 8);
+    const strikeMat = new THREE.MeshBasicMaterial({ color: '#ffff00' });
+    const strikeMesh = new THREE.Mesh(strikeGeo, strikeMat);
+    strikeMesh.visible = false;
+    scene.add(strikeMesh);
+    
+    const warnGeo = new THREE.CircleGeometry(2.5, 16);
+    const warnMat = new THREE.MeshBasicMaterial({ color: '#ffaa00', transparent: true, opacity: 0.5, side: THREE.DoubleSide });
+    const warnMesh = new THREE.Mesh(warnGeo, warnMat);
+    warnMesh.rotation.x = -Math.PI / 2;
+    warnMesh.visible = false;
+    scene.add(warnMesh);
+
+    let state = 0; 
+    let timer = 0;
+    let targetX = 0;
+
+    updatables.push((time, dt) => {
+        timer -= dt;
+        if (state === 0 && timer <= 0) {
+            targetX = startX + Math.random() * (endX - startX);
+            warnMesh.position.set(targetX, 2.1, 0); 
+            warnMesh.visible = true;
+            warnMat.opacity = 0;
+            state = 1;
+            timer = 1.2; 
+        } else if (state === 1) {
+            warnMat.opacity += dt * 0.8; 
+            if (timer <= 0) {
+                warnMesh.visible = false;
+                strikeMesh.position.set(targetX, 10, 0);
+                strikeMesh.visible = true;
+                
+                if (Math.abs(playerBody.position.x - targetX) < 3.0) {
+                    playerBody.velocity.y = 25;
+                    playerBody.velocity.x = (playerBody.position.x > targetX ? 1 : -1) * 30;
+                    playerBody.angularVelocity.z = 15;
+                }
+                
+                state = 2;
+                timer = 0.3; 
+            }
+        } else if (state === 2) {
+            if (timer <= 0) {
+                strikeMesh.visible = false;
+                state = 0;
+                timer = 0.5 + Math.random() * 1.5; 
+            }
+        }
+    });
+}
+
+function buildStage() {
+    bodies.forEach(b => world.remove(b));
+    meshes.forEach(m => scene.remove(m));
+    scene.children = scene.children.filter(c => c.type === 'AmbientLight' || c.type === 'DirectionalLight');
+    
+    bodies = []; meshes = [];
+    updatables = [];
+
+    // 1. スタート
+    createBox(6, 0, 0, 16, 4, 4, '#6bd16b'); 
+    
+    // 2. 小さな段差
+    createBox(18, 1, 0, 6, 6, 4, '#6bd16b'); // 上端は Y = 4
+    
+    // とげを乗せるための土地
+    createBox(29, 0, 0, 16, 4, 4, '#6bd16b'); // 上端は Y = 2
+    
+    // 3. とげ (土地の上に乗せる。Y=2.5)
+    createSpike(26, 2.5, 0, 4); // 4本に減らす
+    
+    // 4. バネ
+    createBox(39, -0.5, 0, 4, 2, 4, '#ffcc00', { material: bouncyMaterial }); 
+    
+    createBox(50, 4, 0, 12, 4, 4, '#6bd16b'); // 上端は Y = 6
+    
+    // 5. 岩
+    const rock1 = createThwomp(60, 14, 0);
+    
+    // 岩の下から2つ目のとげまでの土地
+    createBox(64, 4, 0, 16, 4, 4, '#6bd16b'); // 上端は Y = 6
+    
+    // 6. 2つ目の岩（とげから変更）
+    const rock2 = createThwomp(68, 14, 0);
+    
+    // 1つ目の岩の手前に配置するボタン (X=54, Y=6.25)
+    createButton(54, 6.25, 0, () => {
+        rock1.freezeTimer = 10.0; // 10秒間止める
+        rock2.freezeTimer = 10.0; // 両方止める
+    });
+    
+    // 岩の後の土地と土地の間を移動するリフト
+    createMovingPlatform(77, 93, 4); 
+    
+    // 7. 雷 (移動リフトの分、全体のX座標を後ろにずらす)
+    createBox(114, 4, 0, 32, 4, 4, '#6bd16b');
+    createLightningArea(98, 130);
+    
+    // 8. 回転する棒（土地なし）
+    createRotatingStick(137, 6, 0);
+    
+    // 9. 氷
+    createBox(157, 0, 0, 30, 4, 4, '#b3e5fc', { material: iceMaterial });
+    
+    // 10. ゴール
+    createBox(177, 0, 0, 10, 4, 4, '#6bd16b');
+    goalBody = createBox(180, 2.5, 0, 4, 1, 4, '#ffd34d').body;
+
+    const radius = 0.6;
+    const height = 1.2;
+    playerBody = new CANNON.Body({ mass: 2, linearDamping: 0.2, angularDamping: 0.4, material: physicsMaterial });
+    const cylinderShape = new CANNON.Cylinder(radius * 0.9, radius * 0.9, height, 16);
+    const sphereShape = new CANNON.Sphere(radius);
+    const q = new CANNON.Quaternion();
+    q.setFromAxisAngle(new CANNON.Vec3(1,0,0), -Math.PI/2);
+    playerBody.addShape(cylinderShape, new CANNON.Vec3(0,0,0), q);
+    playerBody.addShape(sphereShape, new CANNON.Vec3(0, height/2, 0));
+    playerBody.addShape(sphereShape, new CANNON.Vec3(0, -height/2, 0));
+    
+    playerBody.position.set(0, 5, 0); 
+    world.addBody(playerBody);
+
+    playerMesh = new THREE.Group();
+    const pMat = new THREE.MeshLambertMaterial({ color: '#ff66aa' }); 
+    
+    const cylGeo = new THREE.CylinderGeometry(radius, radius, height, 16);
+    const cylMesh = new THREE.Mesh(cylGeo, pMat);
+    cylMesh.castShadow = true;
+    playerMesh.add(cylMesh);
+    const sphGeo = new THREE.SphereGeometry(radius, 16, 16);
+    const sphTop = new THREE.Mesh(sphGeo, pMat);
+    sphTop.position.set(0, height/2, 0);
+    sphTop.castShadow = true;
+    playerMesh.add(sphTop);
+    const sphBot = new THREE.Mesh(sphGeo, pMat);
+    sphBot.position.set(0, -height/2, 0);
+    sphBot.castShadow = true;
+    playerMesh.add(sphBot);
+    scene.add(playerMesh);
+
+    const eyeGeo = new THREE.SphereGeometry(0.15);
+    const eyeMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const pupilMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+    
+    const eyeR = new THREE.Mesh(eyeGeo, eyeMat);
+    eyeR.position.set(0.2, 0.6, 0.55);
+    const pupilR = new THREE.Mesh(new THREE.SphereGeometry(0.08), pupilMat);
+    pupilR.position.set(0,0,0.1);
+    eyeR.add(pupilR);
+    
+    const eyeL = new THREE.Mesh(eyeGeo, eyeMat);
+    eyeL.position.set(-0.2, 0.6, 0.55);
+    const pupilL = new THREE.Mesh(new THREE.SphereGeometry(0.08), pupilMat);
+    pupilL.position.set(0,0,0.1);
+    eyeL.add(pupilL);
+    playerMesh.add(eyeR);
+    playerMesh.add(eyeL);
+}
+
+// END
+
+function resetStage() {
+    lastTime = undefined;
+    jumpBufferTimer = 0;
+    jumpKeyWasDown = false;
+    buildStage();
+    fallCount++;
+    document.getElementById("clearScreen").style.display = "none";
+}
+
+function startGame() {
+    lastTime = undefined;
+    jumpBufferTimer = 0;
+    jumpKeyWasDown = false;
+    isCleared = false;
+    init3D();
+    fallCount = 0;
+    startTime = performance.now();
+    buildStage();
+    isPlaying = true;
+    if(!animationId) loop();
+}
+
+function stopGame() {
+    isPlaying = false;
+    if(animationId) cancelAnimationFrame(animationId);
+    animationId = null;
+}
+
+function formatTime(ms) {
+    const totalSec = Math.floor(ms / 1000);
+    const m = Math.floor(totalSec / 60).toString().padStart(2, '0');
+    const s = (totalSec % 60).toString().padStart(2, '0');
+    const msStr = Math.floor((ms % 1000) / 10).toString().padStart(2, '0');
+    return `${m}:${s}.${msStr}`;
+}
+
+let lastTime;
+let jumpKeyWasDown = false;
+let jumpBufferTimer = 0;
+
+function loop() {
+    if (!isPlaying) return;
+    animationId = requestAnimationFrame(loop);
+
+    const time = performance.now();
+    if (lastTime === undefined) lastTime = time;
+    let dt = (time - lastTime) / 1000;
+    lastTime = time;
+    if (dt <= 0) dt = 0.016;
+
+    updatables.forEach(fn => fn(time, dt));
+    world.step(Math.min(dt, 0.05));
+
+    playerMesh.position.copy(playerBody.position);
+    playerMesh.quaternion.copy(playerBody.quaternion);
+
+    for (let i = 0; i < bodies.length; i++) {
+        meshes[i].position.copy(bodies[i].position);
+        meshes[i].quaternion.copy(bodies[i].quaternion);
+    }
+
+    camera.position.x += (playerBody.position.x - camera.position.x) * (dt * 8);
+    camera.position.y += ((playerBody.position.y + 4) - camera.position.y) * (dt * 8);
+    camera.position.z = 15;
+    camera.lookAt(camera.position.x, playerBody.position.y, 0);
+
+    const torque = 20;
+    if (isDown('ArrowRight')) playerBody.torque.z -= torque;
+    if (isDown('ArrowLeft')) playerBody.torque.z += torque;
+
+    const maxSpeed = 15;
+    if (playerBody.velocity.x > maxSpeed) playerBody.velocity.x = maxSpeed;
+    if (playerBody.velocity.x < -maxSpeed) playerBody.velocity.x = -maxSpeed;
+
+    const maxSpin = 5;
+    if (playerBody.angularVelocity.z > maxSpin) playerBody.angularVelocity.z = maxSpin;
+    if (playerBody.angularVelocity.z < -maxSpin) playerBody.angularVelocity.z = -maxSpin;
+
+    let onGround = false, onSpike = false;
+    for (let i = 0; i < world.contacts.length; i++) {
+        let c = world.contacts[i];
+        if (c.bi === playerBody || c.bj === playerBody) {
+            onGround = true;
+            const other = c.bi === playerBody ? c.bj : c.bi;
+            if (other.isSpike) onSpike = true;
+            // 岩の下敷きになったかどうかの判定
+            if (other.isThwomp) {
+                const dx = Math.abs(playerBody.position.x - other.position.x);
+                // 岩の横幅は4(中心から2)。dx < 1.8 なら確実に岩の下にいる。
+                // velocity.y < -10 なら岩が猛スピードで落下中。
+                // 横から軽く当たったり、岩が止まっている時に触れても死なないようにする。
+                if (dx < 1.8 && other.velocity.y < -10 && playerBody.position.y < other.position.y) {
+                    onSpike = true;
+                }
+            }
+        }
+    }
+
+    if (onSpike || playerBody.position.y < -15) {
+        resetStage();
+    }
+
+    const isJumpDown = isDown('ArrowUp');
+    if (isJumpDown && !jumpKeyWasDown) jumpBufferTimer = 15;
+    jumpKeyWasDown = isJumpDown;
+    if (jumpBufferTimer > 0) jumpBufferTimer--;
+
+    if (jumpBufferTimer > 0 && onGround) {
+        playerBody.velocity.y = 15;
+        playerBody.angularVelocity.z += (Math.random() - 0.5) * 1.5;
+        jumpBufferTimer = 0;
+    }
+
+    playerBody.position.z = 0;
+    playerBody.velocity.z = 0;
+    playerBody.angularVelocity.x = 0;
+    playerBody.angularVelocity.y = 0;
+
+    hudText.innerText = `落下回数: ${fallCount} \nTIME: ${formatTime(time - startTime)}`;
+
+    if (!isCleared && goalBody && playerBody.position.distanceTo(goalBody.position) < 3) {
+        isCleared = true;
+        const clearMs = time - startTime;
+        document.getElementById("clearScreen").style.display = "flex";
+        document.getElementById("clearText").innerText = `${currentName} さんクリア！\nタイム: ${formatTime(clearMs)}`;
+        saveRecord(currentName, clearMs);
+        playerBody.velocity.set(0,0,0);
+        playerBody.angularVelocity.set(0,0,0);
+    }
+
+    renderer.render(scene, camera);
+}
+</script>
+</body>
+</html>
